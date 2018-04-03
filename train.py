@@ -13,7 +13,6 @@ import gc
 
 _lr_multiplier = 0.01
 
-
 def train_mp(model, data, optimizer, opt, log, rank, queue):
     try:
         train(model, data, optimizer, opt, log, rank, queue)
@@ -42,7 +41,7 @@ def train(model, data, optimizer, opt, log, rank=1, queue=None):
             data.burnin = True
             lr = opt.lr * _lr_multiplier
             if rank == 1:
-                log.info(f'Burnin: lr={lr}')
+                log.info('Burnin: lr=%s' % lr)
         for inputs, targets in loader:
             elapsed = timeit.default_timer() - t_start
             optimizer.zero_grad()
@@ -61,9 +60,37 @@ def train(model, data, optimizer, opt, log, rank=1, queue=None):
                 )
             else:
                 log.info(
-                    'info: {'
-                    f'"elapsed": {elapsed}, '
-                    f'"loss": {np.mean(epoch_loss)}, '
-                    '}'
-                )
+                    'info: {"elapsed": %f, "loss": %f, }' % (elapsed, float(np.mean(epoch_loss))))
         gc.collect()
+
+def train_gpu(model, data, optimizer, opt, log):
+    # setup parallel data loader
+    loader = DataLoader(
+        data,
+        batch_size=opt.batchsize,
+        shuffle=True,
+        num_workers=opt.ndproc,
+        collate_fn=data.collate
+    )
+
+    for epoch in range(opt.epochs):
+        epoch_loss = []
+        loss = None
+        data.burnin = False
+        lr = opt.lr
+        t_start = timeit.default_timer()
+        if epoch < opt.burnin:
+            data.burnin = True
+            lr = opt.lr * _lr_multiplier
+            log.info('Burnin: lr=%s' % lr)
+        for inputs, targets in loader:
+            elapsed = timeit.default_timer() - t_start
+            optimizer.zero_grad()
+            preds = model(inputs)
+            loss = model.loss(preds, targets, size_average=True)
+            loss.backward()
+            optimizer.step(lr=lr)
+            epoch_loss.append(loss.data[0])
+
+        log.info(
+            'info: {"elapsed": %f, "loss": %f, }' % (elapsed, float(np.mean(epoch_loss))))

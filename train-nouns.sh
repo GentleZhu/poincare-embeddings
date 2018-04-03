@@ -26,3 +26,4 @@ python3 embed.py \
        -fout nouns.pth \
        -batchsize 50 \
        -eval_each 100 \
+       --gpu 5

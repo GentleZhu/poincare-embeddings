@@ -12,7 +12,9 @@ import argparse
 from torch.autograd import Variable
 from collections import defaultdict as ddict
 import torch.multiprocessing as mp
-import model, train, rsgd
+import train, rsgd
+import model_cuda as model
+#import model
 from data import slurp
 from rsgd import RiemannianSGD
 from sklearn.metrics import average_precision_score
@@ -82,7 +84,7 @@ def control(queue, log, types, data, fout, distfn, nepochs, processes):
                      epoch, elapsed, loss, mrank, mAP, min_rank[0], max_map[0])
             )
         else:
-            log.info(f'json_log: {{"epoch": {epoch}, "loss": {loss}, "elapsed": {elapsed}}}')
+            log.info('json_log: {{"epoch": %d, "loss": %.3f, "elapsed": %.2f}}' % (epoch, loss, elapsed))
         if epoch >= nepochs - 1:
             log.info(
                 ('results: {'
@@ -111,9 +113,13 @@ if __name__ == '__main__':
     parser.add_argument('-eval_each', help='Run evaluation each n-th epoch', type=int, default=10)
     parser.add_argument('-burnin', help='Duration of burn in', type=int, default=20)
     parser.add_argument('-debug', help='Print debug output', action='store_true', default=False)
+    parser.add_argument('--gpu', nargs='?', default='0')
     opt = parser.parse_args()
 
     th.set_default_tensor_type('torch.FloatTensor')
+    if opt.nproc == 0:
+        th.cuda.set_device(int(opt.gpu))
+
     if opt.debug:
         log_level = logging.DEBUG
     else:
@@ -121,6 +127,8 @@ if __name__ == '__main__':
     log = logging.getLogger('poincare-nips17')
     logging.basicConfig(level=log_level, format='%(message)s', stream=sys.stdout)
     idx, objects = slurp(opt.dset)
+
+    # sys.exit()
 
     # create adjacency list for evaluation
     adjacency = ddict(set)
@@ -141,7 +149,7 @@ if __name__ == '__main__':
         distfn = model.TranseDistance
         opt.rgrad = rsgd.euclidean_grad
     else:
-        raise ValueError(f'Unknown distance function {opt.distfn}')
+        raise ValueError('Unknown distance function %s' % opt.distfn)
 
     # initialize model and data
     model, data, model_name, conf = model.SNGraphDataset.initialize(distfn, opt, idx, objects)
@@ -155,7 +163,7 @@ if __name__ == '__main__':
         ('negs', '{:d}'),
     ] + conf
     conf = ', '.join(['"{}": {}'.format(k, f).format(getattr(opt, k)) for k, f in conf])
-    log.info(f'json_conf: {{{conf}}}')
+    log.info('json_conf: {{%s}}' % conf)
 
     # initialize optimizer
     optimizer = RiemannianSGD(
@@ -167,7 +175,13 @@ if __name__ == '__main__':
 
     # if nproc == 0, run single threaded, otherwise run Hogwild
     if opt.nproc == 0:
-        train.train(model, data, optimizer, opt, log, 0)
+        train.train_gpu(model, data, optimizer, opt, log)
+        th.save({
+                'model': model.state_dict(),
+                'epoch': opt.epochs,
+                'objects': data.objects,
+            }, opt.fout)
+        # control_gpu(log, adjacency, data, opt.fout, distfn, opt.epochs)
     else:
         queue = mp.Manager().Queue()
         model.share_memory()

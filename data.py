@@ -20,7 +20,7 @@ def parse_seperator(line, length, sep='\t'):
         w = int(d[-1])
         d = d[:-1]
     else:
-        raise RuntimeError(f'Malformed input ({line.strip()})')
+        raise RuntimeError('Malformed input ()' % line)
     return tuple(d) + (w,)
 
 
@@ -62,8 +62,9 @@ def slurp(fin, fparse=parse_tsv, symmetrize=False):
         if symmetrize:
             subs.append((enames[j], enames[i], w))
     idx = th.from_numpy(np.array(subs, dtype=np.int))
+    # print(subs[-4:])
 
     # freeze defaultdicts after training data and convert to arrays
     objects = intmap_to_list(dict(enames))
-    print(f'slurp: objects={len(objects)}, edges={len(idx)}')
+    print('slurp: objects=%d, edges=%d' % (len(objects), len(idx)))
     return idx, objects

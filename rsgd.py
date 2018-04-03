@@ -15,7 +15,7 @@ spten_t = th.sparse.FloatTensor
 def poincare_grad(p, d_p):
     r"""
     Function to compute Riemannian gradient from the
-    Euclidean gradient in the Poincaré ball.
+    Euclidean gradient in the Poincare ball.
 
     Args:
         p (Tensor): Current point in the ball
